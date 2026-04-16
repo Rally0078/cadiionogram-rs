@@ -1,4 +1,5 @@
 mod read_cadi;
+mod siteinfo;
 
 use std::fs::File;
 use std::io::{BufWriter, Write};

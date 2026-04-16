@@ -1,6 +1,18 @@
 [package]
-name = "cadiionogram"
+name = "cadiasciireader"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "mdreader_rs"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "asciitool"
+path = "src/main.rs"
+
 [dependencies]
+chrono = "0.4.44"
+numpy = "0.28.0"
+once_cell = "1.21.4"
+pyo3 = { version = "0.28.3", features = ["extension-module", "chrono"] }
