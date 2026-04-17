@@ -3,12 +3,13 @@ use pyo3::types::{PyDateTime, PyModule, PyTzInfo};
 use chrono::{DateTime, Datelike, Timelike, FixedOffset};
 use chrono_tz::Tz;
 use std::ops::Deref;
+use serde::Serialize;
 
 // PyTzDateTime allows us to convert between Python datetime with timezone and Rust DateTime<Tz> 
 // pyo3's IntoPyObject and FromPyObject traits. 
 // This is necessary because pyo3 does not natively support chrono's DateTime<Tz> type, 
 // and we need a way to bridge the gap between Python's datetime with tzinfo and Rust's timezone-aware datetime.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize)]
 pub struct PyTzDateTime(pub DateTime<Tz>);
 // The following IntoPyObject and FromPyObject traits must be implemented so the Rust datetime can be 
 // correctly converted to a Python datetime with timezone information when returned to Python, 

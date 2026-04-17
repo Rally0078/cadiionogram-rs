@@ -6,9 +6,10 @@ use pyo3::prelude::*;
 use pyo3::IntoPyObjectExt;
 use numpy::{PyArray1, PyArray2, IntoPyArray, PyArrayMethods};
 use crate::pytzdatetime::PyTzDateTime;
+use serde::Serialize;
 
 #[pyclass(from_py_object)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Metadata {
     #[pyo3(get, set)]
     pub site: String,
