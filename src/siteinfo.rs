@@ -1,4 +1,5 @@
-use chrono::{FixedOffset, NaiveDate, NaiveDateTime, NaiveTime};
+use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+use chrono_tz::{Asia::Kolkata, UTC, Tz};
 use std::collections::HashMap;
 use once_cell::sync::Lazy;
 
@@ -11,28 +12,27 @@ pub struct SiteInfo {
 }
 
 impl SiteInfo {
-    pub fn get_tzinfo(&self, dtime: NaiveDateTime) -> FixedOffset {
+    pub fn get_tzinfo(&self, dtime: NaiveDateTime) -> Tz {
         if self.site == "TIR" {
             let tir_threshold = NaiveDateTime::new(
                 NaiveDate::from_ymd_opt(2020, 1, 1).unwrap(),
                 NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
             );
             if dtime < tir_threshold {
-                FixedOffset::east_opt(5 * 3600 + 1800).unwrap() // Asia/Kolkata
+                Kolkata.into()
             } else {
-                FixedOffset::east_opt(0).unwrap() // UTC
+                UTC.into()
             }
         } else {
-            FixedOffset::east_opt(5 * 3600 + 1800).unwrap() // Asia/Kolkata
+            Kolkata.into()
         }
     }
 
     pub fn get_tzstr(&self, dtime: NaiveDateTime) -> &'static str {
         let tz = self.get_tzinfo(dtime);
-        if tz.local_minus_utc() == 0 {
-            "UT"
-        } else {
-            "LT"
+        match tz {
+            Tz::UTC => "UT",
+            _ => "LT",
         }
     }
 }

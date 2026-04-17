@@ -1,14 +1,13 @@
 mod read_cadi;
 mod siteinfo;
-
+mod pytzdatetime;
 use pyo3::prelude::*;
 use crate::read_cadi::{MDReader, CadiData, Metadata};
-use std::path::Path;
+use std::path::PathBuf;
 
 #[pyfunction]
-fn read_raw_data(filename: String) -> PyResult<CadiData> {
-    let path = Path::new(&filename);
-    MDReader::read_raw_data(path)
+fn read_raw_data(filename: PathBuf) -> PyResult<CadiData> {
+    MDReader::read_raw_data(&filename)
         .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))
 }
 
