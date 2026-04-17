@@ -1,10 +1,9 @@
 //Library crate containing the CADI binary file reader
 use crate::siteinfo::SITE_DICT;
-use chrono::{NaiveDate, NaiveDateTime, NaiveTime, Timelike};
+use chrono::{NaiveDate, NaiveDateTime, NaiveTime, Timelike, TimeZone};
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::path::Path;
-
 pub mod cadi_dataclass;
 pub use cadi_dataclass::{Metadata, CadiData};
 use crate::pytzdatetime::PyTzDateTime;
@@ -163,12 +162,11 @@ impl ReaderContext {
         let naive_date = NaiveDate::from_ymd_opt(year, month, day).ok_or(())?;
         let naive_time = NaiveTime::from_hms_opt(hour, minute, sec).ok_or(())?;
         let naive_datetime = NaiveDateTime::new(naive_date, naive_time);
-        // Use siteinfo for timezone resolution
+        // Use siteinfo for timezone resolution for each site
         let tz = SITE_DICT.get(self.metadata.site.as_str())
             .map(|info| info.get_tzinfo(naive_datetime))
             .unwrap_or(chrono_tz::UTC);
 
-        use chrono::TimeZone;
         self.metadata.datetime = PyTzDateTime(tz.from_local_datetime(&naive_datetime).unwrap());
 
         self.metadata.filetype = self.read_string(1).map_err(|_| self.mark_header_incomplete())?;
