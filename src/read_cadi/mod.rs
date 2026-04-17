@@ -114,7 +114,16 @@ impl ReaderContext {
 
         let mut observations = ObservationBuffer::new();
         if let Err(_) = self.read_records(&mut observations) {
-            // Already handled inside read_records
+            // Truncate partial data for the incomplete record
+            if let Some(&final_idx) = self.metadata.time_partitions.values().last() {
+                observations.truncate(final_idx);
+            } else {
+                // If no records were completed, return empty data
+                return Ok(CadiData {
+                    freqs,
+                    ..CadiData::empty(self.metadata.clone())
+                });
+            }
         }
 
         let (height, frequency, dop_shifts, complex_signal) = MDReader::convert_bins_to_vals(
@@ -312,5 +321,13 @@ impl ObservationBuffer {
             dopbin_iq: Vec::new(),
             file_list: Vec::new(),
         }
+    }
+
+    fn truncate(&mut self, len: usize) {
+        self.dopbin_x_freqx.truncate(len);
+        self.dopbin_x_hflag.truncate(len);
+        self.dopbin_x_dop_flag.truncate(len);
+        self.dopbin_iq.truncate(len);
+        // file_list length should already match number of entries in time_partitions
     }
 }
