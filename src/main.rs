@@ -40,34 +40,32 @@ fn main() -> std::io::Result<()> {
     let mut writer = BufWriter::new(csv_file);
 
     // Write header
-    write!(writer, "timestamp,freq (Hz),height (km),dopplershift")?;
+    /*write!(writer, "year\tmonth\tday\thour\tminute\tsecond\tfreq (Hz)\theight (km)\tdopplershift")?;
     for i in 1..=data.metadata.noofreceivers {
-        write!(writer, ",sensor{} real,sensor{} imag", i, i)?;
+        write!(writer, "\tsensor{} real\tsensor{} imag", i, i)?;
     }
-    writeln!(writer)?;
+    writeln!(writer)?;*/
 
     let n_receivers = data.metadata.noofreceivers as usize;
     let vals_per_bin = n_receivers * 2;
 
     // Prepare timestamp generation logic
     let obs_dt = *data.metadata.datetime;
-    let base_date_str = format!("{:04}-{:02}-{:02}", obs_dt.year(), obs_dt.month(), obs_dt.day());
+    let base_date_str = format!("{:04}\t{:02}\t{:02}", obs_dt.year(), obs_dt.month(), obs_dt.day());
     
     let mut current_record_idx = 0;
     
     // time_partitions is a BTreeMap<String, usize>, so it's sorted by time string
-    for (time_str, &cumulative_count) in &data.metadata.time_partitions {
-        let timestamp = format!("{} {}", base_date_str, time_str);
+    for (time_str, &cumulative_count) in &data.metadata.time_partitions {   
+        let formatted_timestr = format!("{:02}\t{:02}\t{:02}", &time_str[0..2], &time_str[3..5], &time_str[6..8]);
+        let timestamp = format!("{}\t{}", base_date_str, formatted_timestr);
         
         while current_record_idx < cumulative_count && current_record_idx < data.height.len() {
             let i = current_record_idx;
             
-            let freq_val = data.frequency[i];
+            let freq_val = data.frequency[i]/1e6;
             let freq_formatted = if freq_val == 0.0 { "0.0".to_string() } else {
-                let s = format!("{:e}", freq_val);
-                let parts: Vec<&str> = s.split('e').collect();
-                let exp: i32 = parts[1].parse().unwrap_or(0);
-                format!("{}e{:+03}", parts[0], exp)
+                format!("{:.6}", freq_val)
             };
 
             let height_str = format!("{:.1}", data.height[i]);
@@ -75,14 +73,14 @@ fn main() -> std::io::Result<()> {
 
             write!(
                 writer,
-                "{},{},{},{}",
+                "{}\t{}\t{}\t{}",
                 timestamp, freq_formatted, height_str, dop_str
             )?;
 
             // Write the complex signal components
             let start = i * vals_per_bin;
             for j in 0..vals_per_bin {
-                write!(writer, ",{}", data.complex_signal[start + j])?;
+                write!(writer, "\t{}", data.complex_signal[start + j])?;
             }
             writeln!(writer)?;
             

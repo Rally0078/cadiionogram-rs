@@ -1,5 +1,5 @@
-mod read_cadi;
-mod siteinfo;
+pub mod read_cadi;
+pub mod siteinfo;
 mod pytzdatetime;
 use pyo3::prelude::*;
 use crate::read_cadi::{MDReader, CadiData, Metadata};

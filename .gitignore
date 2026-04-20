@@ -1,5 +1,7 @@
 /target
 __pycache__
-*.py
 *.csv
 *.md*
+dist/
+build/
+*.egg-info/

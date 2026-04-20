@@ -207,7 +207,7 @@ impl ReaderContext {
         let mut time_min = self.read_u8().map_err(|_| ())?;
         let hour = self.metadata.datetime.hour();
 
-        while self.pos() < self.eof && time_min != 255 && time_min < 60 {
+        while time_min != 255 && time_min < 60 {
             let time_sec = self.read_u8().map_err(|_| self.mark_data_incomplete())?;
             let _gain_flag = self.read_u8().map_err(|_| self.mark_data_incomplete())?;
 
@@ -256,10 +256,13 @@ impl ReaderContext {
             self.metadata.time_partitions.insert(time_partition_key, obs.dopbin_iq.len());
             obs.file_list.push(self.metadata.source.clone());
 
-            if self.pos() < self.eof {
-                match self.read_u8() {
-                    Ok(v) => time_min = v,
-                    Err(_) => break,
+            match self.read_u8() {
+                Ok(v) => time_min = v,
+                Err(_) => {
+                    if time_min != 255 {
+                        self.mark_data_incomplete();
+                    }
+                    break;
                 }
             }
         }
