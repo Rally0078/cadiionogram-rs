@@ -61,7 +61,6 @@ impl MDReader {
 
 struct ReaderContext {
     reader: BufReader<File>,
-    eof: u64,
     metadata: Metadata,
 }
 
@@ -70,7 +69,6 @@ impl ReaderContext {
         let file = File::open(filename)?;
         let mut reader = BufReader::new(file);
 
-        let eof = reader.seek(SeekFrom::End(0))?;
         reader.seek(SeekFrom::Start(0))?;
 
         let extension = filename
@@ -88,7 +86,6 @@ impl ReaderContext {
 
         Ok(Self {
             reader,
-            eof,
             metadata,
         })
     }
@@ -267,10 +264,6 @@ impl ReaderContext {
             }
         }
         Ok(())
-    }
-
-    fn pos(&mut self) -> u64 {
-        self.reader.stream_position().unwrap_or(self.eof)
     }
 
     fn read_u8(&mut self) -> std::io::Result<u8> {
