@@ -40,7 +40,7 @@ fn test_read_raw_file_tir_lt() {
     file.write_all(&30u8.to_le_bytes()).unwrap(); // time_sec
     file.write_all(&226u8.to_le_bytes()).unwrap(); // gain_flag
     
-    for freqx in 0..nfreqs {
+    for _freqx in 0..nfreqs {
         file.write_all(&32u8.to_le_bytes()).unwrap(); // noise_flag
         file.write_all(&384u16.to_le_bytes()).unwrap(); // noise_power10
         
