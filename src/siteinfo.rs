@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use once_cell::sync::Lazy;
 
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 pub struct SiteInfo {
     pub fh: f32,
     pub dip: f32,
@@ -27,7 +28,7 @@ impl SiteInfo {
             Kolkata.into()
         }
     }
-
+    #[allow(dead_code)]
     pub fn get_tzstr(&self, dtime: NaiveDateTime) -> &'static str {
         let tz = self.get_tzinfo(dtime);
         match tz {
