@@ -1,4 +1,4 @@
-use mdreader_rs::siteinfo::SITE_DICT;
+use mdreader_rs::siteinfo::SiteInfo;
 use mdreader_rs::read_cadi::MDReader;
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use chrono_tz::{Asia::Kolkata, UTC, Tz};
@@ -22,7 +22,7 @@ fn test_siteinfo() {
     ];
 
     for (site, obs_dt, expected_zone) in itertools::izip!(sitenames, obs_datetimes, expected_zones) {
-        let site_info = SITE_DICT.get(site).expect(&format!("Site {} not found", site));
+        let site_info = SiteInfo::from_file(site).expect(&format!("Site {} not found", site));
         assert_eq!(site_info.get_tzinfo(obs_dt), expected_zone);
     }
 }
