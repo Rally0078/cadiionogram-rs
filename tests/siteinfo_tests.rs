@@ -1,5 +1,5 @@
-use mdreader_rs::siteinfo::SiteInfo;
-use mdreader_rs::read_cadi::MDReader;
+use mdxreader_rs::siteinfo::SiteInfo;
+use mdxreader_rs::read_cadi::MDReader;
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use chrono_tz::{Asia::Kolkata, UTC, Tz};
 use tempfile::NamedTempFile;

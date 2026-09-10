@@ -1,21 +1,25 @@
 //Library crate containing the CADI binary file reader
 use crate::siteinfo::SiteInfo;
-use chrono::{NaiveDate, NaiveDateTime, NaiveTime, Timelike, TimeZone};
+use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Timelike};
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::path::Path;
 pub mod cadi_dataclass;
-pub use cadi_dataclass::{Metadata, CadiData};
+pub use cadi_dataclass::CADIdata;
+pub mod cadi_dopbins;
+pub use cadi_dopbins::CADIdopbin;
+pub mod cadi_freqbins;
+pub use cadi_freqbins::CADIfreqbin;
+pub mod cadi_header;
+pub use cadi_header::CADIheader;
+
 use crate::pytzdatetime::PyTzDateTime;
 
 pub struct MDReader;
 
 impl MDReader {
-    pub fn read_raw_data(filename: &Path) -> std::io::Result<CadiData> {
-        let mut context = match ReaderContext::new(filename) {
-            Ok(ctx) => ctx,
-            Err(e) => return Err(e),
-        };
+    pub fn read_raw_data(filename: &Path) -> std::io::Result<CADIdata> {
+        let context = ReaderContext::new(filename)?;
 
         context.read()
     }
@@ -46,26 +50,28 @@ impl MDReader {
         let mut height = Vec::with_capacity(n);
         let mut frequency = Vec::with_capacity(n);
         let mut dop_shifts = Vec::with_capacity(n);
-        let mut complex_signal = Vec::with_capacity(n * noofreceivers as usize * 2);
+        let mut signals = Vec::with_capacity(n * noofreceivers as usize * 2);
 
         for i in 0..n {
             height.push(dopbin_x_hflag[i] as f32 * 3.0);
             frequency.push(freqs[dopbin_x_freqx[i] as usize]);
             dop_shifts.push(((dopbin_x_dop_flag[i] as f64 - ndops_f64) * dopsn2) as f32);
-            complex_signal.extend(dopbin_iq[i].iter().map(|&v| v as i8 as i16));
+            signals.extend(dopbin_iq[i].iter().map(|&v| v as i8 as i16));
         }
 
-        (height, frequency, dop_shifts, complex_signal)
+        (height, frequency, dop_shifts, signals)
     }
 }
 
 struct ReaderContext {
     reader: BufReader<File>,
-    metadata: Metadata,
+    metadata: CADIheader,
+    freqbins: CADIfreqbin,
+    dopbins: CADIdopbin,
 }
 
 impl ReaderContext {
-    fn new(filename:  &Path) -> std::io::Result<Self> {
+    fn new(filename: &Path) -> std::io::Result<Self> {
         let file = File::open(filename)?;
         let mut reader = BufReader::new(file);
 
@@ -74,25 +80,27 @@ impl ReaderContext {
         let extension = filename
             .extension()
             .and_then(|e| e.to_str())
-            .unwrap_or("unknown")
+            .unwrap_or("")
             .to_string();
 
-        let metadata = Metadata {
+        let metadata = CADIheader {
             source: filename.file_name().unwrap().to_string_lossy().to_string(),
             extension,
             dheight: 3.0,
             ..Default::default()
         };
-
+        let n_receivers = metadata.noofreceivers;
         Ok(Self {
             reader,
             metadata,
+            freqbins: CADIfreqbin::empty(),
+            dopbins: CADIdopbin::empty(n_receivers),
         })
     }
 
-    fn read(&mut self) -> std::io::Result<CadiData> {
+    fn read(mut self) -> std::io::Result<CADIdata> {
         if let Err(_) = self.read_header() {
-            return Ok(CadiData::empty(self.metadata.clone()));
+            return Ok(CADIdata::empty(self.metadata));
         }
 
         let mut freqs = Vec::with_capacity(self.metadata.nfreqs as usize);
@@ -101,9 +109,10 @@ impl ReaderContext {
                 Ok(f) => freqs.push(f),
                 Err(_) => {
                     self.metadata.incomplete_header = true;
-                    return Ok(CadiData {
-                        freqs,
-                        ..CadiData::empty(self.metadata.clone())
+                    self.metadata.incomplete_data = true;
+                    return Ok(CADIdata {
+                        freq_list: freqs,
+                        ..CADIdata::empty(self.metadata)
                     });
                 }
             }
@@ -112,18 +121,21 @@ impl ReaderContext {
         let mut observations = ObservationBuffer::new();
         if let Err(_) = self.read_records(&mut observations) {
             // Truncate partial data for the incomplete record
-            if let Some(&final_idx) = self.metadata.time_partitions.values().last() {
-                observations.truncate(final_idx);
+            if let (Some(&dop_idx), Some(&freq_idx)) = (
+                self.dopbins.timepartitions.values().last(),
+                self.freqbins.timepartitions.values().last(),
+            ) {
+                observations.truncate(dop_idx, freq_idx);
             } else {
                 // If no records were completed, return empty data
-                return Ok(CadiData {
-                    freqs,
-                    ..CadiData::empty(self.metadata.clone())
+                return Ok(CADIdata {
+                    freq_list: freqs,
+                    ..CADIdata::empty(self.metadata)
                 });
             }
         }
 
-        let (height, frequency, dop_shifts, complex_signal) = MDReader::convert_bins_to_vals(
+        let (height, frequency, dop_shifts, signals) = MDReader::convert_bins_to_vals(
             &observations.dopbin_x_freqx,
             &observations.dopbin_x_hflag,
             &observations.dopbin_x_dop_flag,
@@ -134,34 +146,69 @@ impl ReaderContext {
             self.metadata.npulses_avgd,
             self.metadata.pps,
         );
-
-        Ok(CadiData {
+        self.dopbins.height = height;
+        self.dopbins.nreceivers = self.metadata.noofreceivers;
+        self.dopbins.frequency = frequency;
+        self.dopbins.dop_shifts = dop_shifts;
+        self.dopbins.signals = signals;
+        self.freqbins.frebins_gain_flag = observations.freqbin_gain_flag;
+        self.freqbins.frebins_noise_flag = observations.freqbin_noise_flag;
+        self.freqbins.frebins_noise_power10 = observations.freqbin_noise_power10;
+        Ok(CADIdata {
             file_list: observations.file_list,
-            metadata: self.metadata.clone(),
-            height,
-            frequency,
-            freqs,
-            dop_shifts,
-            complex_signal,
+            metadata: self.metadata,
+            freq_list: freqs,
+            freqbins: self.freqbins,
+            dopbins: self.dopbins,
         })
     }
 
     fn read_header(&mut self) -> Result<(), ()> {
-        self.metadata.site = self.read_string(3).map_err(|_| self.mark_header_incomplete())?.trim().to_string();
-        let ascii_datetime = self.read_string(22).map_err(|_| self.mark_header_incomplete())?;
-        
+        self.metadata.site = self
+            .read_string(3)
+            .map_err(|_| self.mark_header_incomplete())?
+            .trim()
+            .to_string();
+        let ascii_datetime = self
+            .read_string(22)
+            .map_err(|_| self.mark_header_incomplete())?;
+
         // Parse ascii_datetime: " Jan 01 00:00:00 2020 "
         let month_str = ascii_datetime.get(1..4).ok_or(())?;
-        let day = ascii_datetime.get(5..7).and_then(|s| s.trim().parse::<u32>().ok()).ok_or(())?;
-        let hour = ascii_datetime.get(8..10).and_then(|s| s.parse::<u32>().ok()).ok_or(())?;
-        let minute = ascii_datetime.get(11..13).and_then(|s| s.parse::<u32>().ok()).ok_or(())?;
-        let sec = ascii_datetime.get(14..16).and_then(|s| s.parse::<u32>().ok()).ok_or(())?;
-        let year = ascii_datetime.get(17..21).and_then(|s| s.parse::<i32>().ok()).ok_or(())?;
+        let day = ascii_datetime
+            .get(5..7)
+            .and_then(|s| s.trim().parse::<u32>().ok())
+            .ok_or(())?;
+        let hour = ascii_datetime
+            .get(8..10)
+            .and_then(|s| s.parse::<u32>().ok())
+            .ok_or(())?;
+        let minute = ascii_datetime
+            .get(11..13)
+            .and_then(|s| s.parse::<u32>().ok())
+            .ok_or(())?;
+        let sec = ascii_datetime
+            .get(14..16)
+            .and_then(|s| s.parse::<u32>().ok())
+            .ok_or(())?;
+        let year = ascii_datetime
+            .get(17..21)
+            .and_then(|s| s.parse::<i32>().ok())
+            .ok_or(())?;
 
         let month = match month_str {
-            "Jan" => 1, "Feb" => 2, "Mar" => 3, "Apr" => 4,
-            "May" => 5, "Jun" => 6, "Jul" => 7, "Aug" => 8,
-            "Sep" => 9, "Oct" => 10, "Nov" => 11, "Dec" => 12,
+            "Jan" => 1,
+            "Feb" => 2,
+            "Mar" => 3,
+            "Apr" => 4,
+            "May" => 5,
+            "Jun" => 6,
+            "Jul" => 7,
+            "Aug" => 8,
+            "Sep" => 9,
+            "Oct" => 10,
+            "Nov" => 11,
+            "Dec" => 12,
             _ => 1,
         };
 
@@ -175,27 +222,34 @@ impl ReaderContext {
 
         self.metadata.datetime = PyTzDateTime(tz.from_local_datetime(&naive_datetime).unwrap());
 
-        self.metadata.filetype = self.read_string(1).map_err(|_| self.mark_header_incomplete())?;
+        self.metadata.filetype = self
+            .read_string(1)
+            .map_err(|_| self.mark_header_incomplete())?;
         self.metadata.nfreqs = self.read_u16().map_err(|_| self.mark_header_incomplete())?;
         self.metadata.ndops = self.read_u8().map_err(|_| self.mark_header_incomplete())?;
         self.metadata.minheight = self.read_u16().map_err(|_| self.mark_header_incomplete())?;
         self.metadata.maxheight = self.read_u16().map_err(|_| self.mark_header_incomplete())?;
+        self.metadata.nheights =
+            (self.metadata.maxheight as f32 / self.metadata.dheight + 1.0) as u32;
         self.metadata.pps = self.read_u8().map_err(|_| self.mark_header_incomplete())?;
         self.metadata.npulses_avgd = self.read_u8().map_err(|_| self.mark_header_incomplete())?;
-        
-        let _base_thr100 = self.read_u16().map_err(|_| self.mark_header_incomplete())?;
-        let _noise_thr100 = self.read_u16().map_err(|_| self.mark_header_incomplete())?;
-        let _min_dop_forsave = self.read_u8().map_err(|_| self.mark_header_incomplete())?;
-        
-        self.metadata.dtime = self.read_u16().map_err(|_| self.mark_header_incomplete())?;
-        let _gain_control = self.read_u8().map_err(|_| self.mark_header_incomplete())?;
-        let _sig_process = self.read_u8().map_err(|_| self.mark_header_incomplete())?;
-        self.metadata.noofreceivers = self.read_u8().map_err(|_| self.mark_header_incomplete())?;
-        
-        let mut spares = [0u8; 11];
-        self.reader.read_exact(&mut spares).map_err(|_| self.mark_header_incomplete())?;
+        self.metadata.base_thr100 = self.read_u16().map_err(|_| self.mark_header_incomplete())?;
+        self.metadata.noise_thr100 = self.read_u16().map_err(|_| self.mark_header_incomplete())?;
+        self.metadata.min_dop_forsave =
+            self.read_u8().map_err(|_| self.mark_header_incomplete())?;
 
-        self.metadata.nheights = (self.metadata.maxheight as f32 / self.metadata.dheight + 1.0) as u32;
+        self.metadata.dtime = self.read_u16().map_err(|_| self.mark_header_incomplete())?;
+        self.metadata.gain_control = self
+            .read_string(1)
+            .map_err(|_| self.mark_header_incomplete())?;
+        self.metadata.sig_process = self
+            .read_string(1)
+            .map_err(|_| self.mark_header_incomplete())?;
+        self.metadata.noofreceivers = self.read_u8().map_err(|_| self.mark_header_incomplete())?;
+
+        self.reader
+            .read_exact(&mut self.metadata.spares)
+            .map_err(|_| self.mark_header_incomplete())?;
 
         Ok(())
     }
@@ -213,6 +267,9 @@ impl ReaderContext {
             for freqx in 0..self.metadata.nfreqs {
                 let _noise_flag = self.read_u8().map_err(|_| self.mark_data_incomplete())?;
                 let _noise_power10 = self.read_u16().map_err(|_| self.mark_data_incomplete())?;
+                obs.freqbin_gain_flag.push(_gain_flag);
+                obs.freqbin_noise_flag.push(_noise_flag);
+                obs.freqbin_noise_power10.push(_noise_power10);
                 let mut flag = self.read_u8().map_err(|_| self.mark_data_incomplete())?;
 
                 while flag < 224 {
@@ -225,8 +282,10 @@ impl ReaderContext {
                     }
 
                     for _ in 0..ndops_oneh {
-                        let mut dop_flag = self.read_u8().map_err(|_| self.mark_data_incomplete())?;
-                        let mut iq_data = Vec::with_capacity(self.metadata.noofreceivers as usize * 2);
+                        let mut dop_flag =
+                            self.read_u8().map_err(|_| self.mark_data_incomplete())?;
+                        let mut iq_data =
+                            Vec::with_capacity(self.metadata.noofreceivers as usize * 2);
 
                         for _ in 0..self.metadata.noofreceivers {
                             iq_data.push(self.read_u8().map_err(|_| self.mark_data_incomplete())?);
@@ -250,7 +309,12 @@ impl ReaderContext {
                 time_min = flag;
             }
 
-            self.metadata.time_partitions.insert(time_partition_key, obs.dopbin_iq.len());
+            self.dopbins
+                .timepartitions
+                .insert(time_partition_key.clone(), obs.dopbin_iq.len());
+            self.freqbins
+                .timepartitions
+                .insert(time_partition_key.clone(), obs.freqbin_noise_power10.len());
             obs.file_list.push(self.metadata.source.clone());
 
             match self.read_u8() {
@@ -305,6 +369,9 @@ struct ObservationBuffer {
     dopbin_x_hflag: Vec<u16>,
     dopbin_x_dop_flag: Vec<u8>,
     dopbin_iq: Vec<Vec<u8>>,
+    freqbin_gain_flag: Vec<u8>,
+    freqbin_noise_flag: Vec<u8>,
+    freqbin_noise_power10: Vec<u16>,
     file_list: Vec<String>,
 }
 
@@ -314,16 +381,21 @@ impl ObservationBuffer {
             dopbin_x_freqx: Vec::new(),
             dopbin_x_hflag: Vec::new(),
             dopbin_x_dop_flag: Vec::new(),
+            freqbin_gain_flag: Vec::new(),
+            freqbin_noise_flag: Vec::new(),
+            freqbin_noise_power10: Vec::new(),
             dopbin_iq: Vec::new(),
             file_list: Vec::new(),
         }
     }
 
-    fn truncate(&mut self, len: usize) {
-        self.dopbin_x_freqx.truncate(len);
-        self.dopbin_x_hflag.truncate(len);
-        self.dopbin_x_dop_flag.truncate(len);
-        self.dopbin_iq.truncate(len);
-        // file_list length should already match number of entries in time_partitions
+    fn truncate(&mut self, dop_len: usize, freq_len: usize) {
+        self.dopbin_x_freqx.truncate(dop_len);
+        self.dopbin_x_hflag.truncate(dop_len);
+        self.dopbin_x_dop_flag.truncate(dop_len);
+        self.dopbin_iq.truncate(dop_len);
+        self.freqbin_gain_flag.truncate(freq_len);
+        self.freqbin_noise_flag.truncate(freq_len);
+        self.freqbin_noise_power10.truncate(freq_len);
     }
 }

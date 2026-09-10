@@ -1,8 +1,14 @@
-use mdreader_rs::read_cadi::MDReader;
-use tempfile::NamedTempFile;
+use mdxreader_rs::read_cadi::MDReader;
 use std::io::Write;
+use tempfile::NamedTempFile;
 
-fn write_mock_header(file: &mut NamedTempFile, site: &str, datetime: &str, nfreqs: u16, noofreceivers: u8) {
+fn write_mock_header(
+    file: &mut NamedTempFile,
+    site: &str,
+    datetime: &str,
+    nfreqs: u16,
+    noofreceivers: u8,
+) {
     file.write_all(site.as_bytes()).unwrap(); // 3 bytes
     file.write_all(datetime.as_bytes()).unwrap(); // 22 bytes
     file.write_all(b"H").unwrap(); // 1 byte
@@ -27,9 +33,15 @@ fn test_read_raw_file_tir_lt() {
     let mut file = NamedTempFile::new().unwrap();
     let nfreqs = 4u16;
     let noofreceivers = 4u8;
-    
-    write_mock_header(&mut file, "TIR", " Jan 20 12:34:56 2010\n", nfreqs, noofreceivers);
-    
+
+    write_mock_header(
+        &mut file,
+        "TIR",
+        " Jan 20 12:34:56 2010\n",
+        nfreqs,
+        noofreceivers,
+    );
+
     let freq_list_mock = [3e6f32, 6e6f32, 9e6f32, 12e6f32];
     for &freq in &freq_list_mock {
         file.write_all(&freq.to_le_bytes()).unwrap();
@@ -39,11 +51,11 @@ fn test_read_raw_file_tir_lt() {
     file.write_all(&10u8.to_le_bytes()).unwrap(); // time_min
     file.write_all(&30u8.to_le_bytes()).unwrap(); // time_sec
     file.write_all(&226u8.to_le_bytes()).unwrap(); // gain_flag
-    
+
     for _freqx in 0..nfreqs {
         file.write_all(&32u8.to_le_bytes()).unwrap(); // noise_flag
         file.write_all(&384u16.to_le_bytes()).unwrap(); // noise_power10
-        
+
         // Height 1
         file.write_all(&100u8.to_le_bytes()).unwrap(); // hflag (height = 100 * 3 = 300)
         file.write_all(&1u8.to_le_bytes()).unwrap(); // ndops_oneh
@@ -51,23 +63,23 @@ fn test_read_raw_file_tir_lt() {
         for _ in 0..noofreceivers {
             file.write_all(&[10u8, 20u8]).unwrap(); // Re, Im
         }
-        
+
         // Stop heights for this freq
         file.write_all(&226u8.to_le_bytes()).unwrap();
     }
-    
+
     // End of file
     file.write_all(&255u8.to_le_bytes()).unwrap();
 
     let data = MDReader::read_raw_data(file.path()).unwrap();
-    
+
     assert_eq!(data.metadata.site, "TIR");
     assert_eq!(data.metadata.nfreqs, 4);
-    assert_eq!(data.height.len(), 4); // 1 record * 4 freqs * 1 height
-    assert_eq!(data.height[0], 300.0);
-    assert_eq!(data.frequency[0], 3e6);
-    assert_eq!(data.metadata.time_partitions.len(), 1);
-    assert!(data.metadata.time_partitions.contains_key("12:10:30"));
+    assert_eq!(data.dopbins.height.len(), 4); // 1 record * 4 freqs * 1 height
+    assert_eq!(data.dopbins.height[0], 300.0);
+    assert_eq!(data.dopbins.frequency[0], 3e6);
+    assert_eq!(data.dopbins.timepartitions.len(), 1);
+    assert!(data.dopbins.timepartitions.contains_key("12:10:30"));
 }
 
 #[test]
@@ -76,10 +88,10 @@ fn test_read_raw_file_incomplete_header() {
     file.write_all(b"TIR").unwrap();
     file.write_all(b" Jan 20 12:34:56 2010\n").unwrap();
     // File ends here
-    
+
     let data = MDReader::read_raw_data(file.path()).unwrap();
     assert!(data.metadata.incomplete_header);
-    assert!(data.height.is_empty());
+    assert!(data.dopbins.height.is_empty());
 }
 
 #[test]
@@ -87,9 +99,15 @@ fn test_read_raw_file_incomplete_data() {
     let mut file = NamedTempFile::new().unwrap();
     let nfreqs = 4u16;
     let noofreceivers = 4u8;
-    
-    write_mock_header(&mut file, "TIR", " Jan 20 12:34:56 2010\n", nfreqs, noofreceivers);
-    
+
+    write_mock_header(
+        &mut file,
+        "TIR",
+        " Jan 20 12:34:56 2010\n",
+        nfreqs,
+        noofreceivers,
+    );
+
     let freq_list_mock = [3e6f32, 6e6f32, 9e6f32, 12e6f32];
     for &freq in &freq_list_mock {
         file.write_all(&freq.to_le_bytes()).unwrap();
@@ -100,7 +118,8 @@ fn test_read_raw_file_incomplete_data() {
     file.write_all(&30u8.to_le_bytes()).unwrap();
     file.write_all(&226u8.to_le_bytes()).unwrap();
     for _ in 0..nfreqs {
-        file.write_all(&[32u8, 128u8, 1u8, 100u8, 1u8, 5u8]).unwrap(); // noise_flag, noise_power (low), noise_power (high), hflag, ndops_oneh, dop_flag
+        file.write_all(&[32u8, 128u8, 1u8, 100u8, 1u8, 5u8])
+            .unwrap(); // noise_flag, noise_power (low), noise_power (high), hflag, ndops_oneh, dop_flag
         for _ in 0..noofreceivers {
             file.write_all(&[10u8, 20u8]).unwrap();
         }
@@ -110,9 +129,9 @@ fn test_read_raw_file_incomplete_data() {
     // Record 2 - incomplete
     file.write_all(&11u8.to_le_bytes()).unwrap();
     // File ends prematurely
-    
+
     let data = MDReader::read_raw_data(file.path()).unwrap();
     assert!(data.metadata.incomplete_data);
-    assert_eq!(data.metadata.time_partitions.len(), 1); // Only the first record should be kept
-    assert_eq!(data.height.len(), 4);
+    assert_eq!(data.dopbins.timepartitions.len(), 1); // Only the first record should be kept
+    assert_eq!(data.dopbins.height.len(), 4);
 }

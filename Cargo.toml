@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [lib]
-name = "mdreader_rs"
+name = "mdxreader_rs"
 crate-type = ["cdylib", "rlib"]
 
 [[bin]]
