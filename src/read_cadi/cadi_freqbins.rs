@@ -10,6 +10,7 @@ pub struct CADIfreqbin {
     #[pyo3(get, set, name = "timepartitions")]
     pub timepartitions: BTreeMap<String, usize>,
     pub frebins_gain_flag: Vec<u8>,
+    pub frequency: Vec<f32>,
     pub frebins_noise_flag: Vec<u8>,
     pub frebins_noise_power10: Vec<u16>,
 }
@@ -18,6 +19,7 @@ impl CADIfreqbin {
     pub fn empty() -> Self {
         Self {
             timepartitions: BTreeMap::new(),
+            frequency: Vec::new(),
             frebins_gain_flag: Vec::new(),
             frebins_noise_flag: Vec::new(),
             frebins_noise_power10: Vec::new(),
@@ -27,6 +29,11 @@ impl CADIfreqbin {
 
 #[pymethods]
 impl CADIfreqbin {
+    #[getter]
+    fn frequency<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<f32>> {
+        self.frequency.clone().into_pyarray(py)
+    }
+
     #[getter]
     fn frebins_gain_flag<'py>(&self, py: Python<'py>) -> Bound<'py, PyArray1<u8>> {
         self.frebins_gain_flag.clone().into_pyarray(py)
@@ -43,6 +50,7 @@ impl CADIfreqbin {
     }
     fn __iter__<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let items = vec![
+            self.frequency(py).into_any().into_py_any(py)?,
             self.frebins_gain_flag(py).into_any().into_py_any(py)?,
             self.frebins_noise_flag(py).into_any().into_py_any(py)?,
             self.frebins_noise_power10(py).into_any().into_py_any(py)?,

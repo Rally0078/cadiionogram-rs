@@ -1,4 +1,5 @@
 //Library crate containing the CADI binary file reader
+use crate::pytzdatetime::PyTzDateTime;
 use crate::siteinfo::SiteInfo;
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Timelike};
 use std::fs::File;
@@ -12,8 +13,6 @@ pub mod cadi_freqbins;
 pub use cadi_freqbins::CADIfreqbin;
 pub mod cadi_header;
 pub use cadi_header::CADIheader;
-
-use crate::pytzdatetime::PyTzDateTime;
 
 pub struct MDReader;
 
@@ -34,10 +33,11 @@ impl MDReader {
         ndops: u8,
         npulses_avgd: u8,
         pps: u8,
-    ) -> (Vec<f32>, Vec<f32>, Vec<f32>, Vec<i16>) {
+        frebins_x: &[u16], // array of length number of freqs
+    ) -> (Vec<f32>, Vec<f32>, Vec<f32>, Vec<i16>, Vec<f32>) {
         let n = dopbin_iq.len();
         if n == 0 {
-            return (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+            return (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
         }
 
         let dopsn2 = if ndops > 0 && npulses_avgd > 0 && pps > 0 {
@@ -48,18 +48,29 @@ impl MDReader {
         let ndops_f64 = ndops as f64 / 2.0;
 
         let mut height = Vec::with_capacity(n);
-        let mut frequency = Vec::with_capacity(n);
+        let mut frequency_dopbins = Vec::with_capacity(n);
         let mut dop_shifts = Vec::with_capacity(n);
         let mut signals = Vec::with_capacity(n * noofreceivers as usize * 2);
 
         for i in 0..n {
             height.push(dopbin_x_hflag[i] as f32 * 3.0);
-            frequency.push(freqs[dopbin_x_freqx[i] as usize]);
+            frequency_dopbins.push(freqs[dopbin_x_freqx[i] as usize]);
             dop_shifts.push(((dopbin_x_dop_flag[i] as f64 - ndops_f64) * dopsn2) as f32);
             signals.extend(dopbin_iq[i].iter().map(|&v| v as i8 as i16));
         }
+        let n_freqs = frebins_x.len();
+        let mut frequency_freqbins = Vec::with_capacity(n_freqs);
+        for i in 0..n_freqs {
+            frequency_freqbins.push(freqs[frebins_x[i] as usize]);
+        }
 
-        (height, frequency, dop_shifts, signals)
+        (
+            height,
+            frequency_dopbins,
+            dop_shifts,
+            signals,
+            frequency_freqbins,
+        )
     }
 }
 
@@ -135,22 +146,25 @@ impl ReaderContext {
             }
         }
 
-        let (height, frequency, dop_shifts, signals) = MDReader::convert_bins_to_vals(
-            &observations.dopbin_x_freqx,
-            &observations.dopbin_x_hflag,
-            &observations.dopbin_x_dop_flag,
-            &observations.dopbin_iq,
-            self.metadata.noofreceivers,
-            &freqs,
-            self.metadata.ndops,
-            self.metadata.npulses_avgd,
-            self.metadata.pps,
-        );
+        let (height, frequency_dopbins, dop_shifts, signals, frequency_freqbins) =
+            MDReader::convert_bins_to_vals(
+                &observations.dopbin_x_freqx,
+                &observations.dopbin_x_hflag,
+                &observations.dopbin_x_dop_flag,
+                &observations.dopbin_iq,
+                self.metadata.noofreceivers,
+                &freqs,
+                self.metadata.ndops,
+                self.metadata.npulses_avgd,
+                self.metadata.pps,
+                &observations.freqbins_x,
+            );
         self.dopbins.height = height;
         self.dopbins.nreceivers = self.metadata.noofreceivers;
-        self.dopbins.frequency = frequency;
+        self.dopbins.frequency = frequency_dopbins;
         self.dopbins.dop_shifts = dop_shifts;
         self.dopbins.signals = signals;
+        self.freqbins.frequency = frequency_freqbins;
         self.freqbins.frebins_gain_flag = observations.freqbin_gain_flag;
         self.freqbins.frebins_noise_flag = observations.freqbin_noise_flag;
         self.freqbins.frebins_noise_power10 = observations.freqbin_noise_power10;
@@ -267,6 +281,7 @@ impl ReaderContext {
             for freqx in 0..self.metadata.nfreqs {
                 let _noise_flag = self.read_u8().map_err(|_| self.mark_data_incomplete())?;
                 let _noise_power10 = self.read_u16().map_err(|_| self.mark_data_incomplete())?;
+                obs.freqbins_x.push(freqx as u16);
                 obs.freqbin_gain_flag.push(_gain_flag);
                 obs.freqbin_noise_flag.push(_noise_flag);
                 obs.freqbin_noise_power10.push(_noise_power10);
@@ -372,6 +387,7 @@ struct ObservationBuffer {
     freqbin_gain_flag: Vec<u8>,
     freqbin_noise_flag: Vec<u8>,
     freqbin_noise_power10: Vec<u16>,
+    freqbins_x: Vec<u16>,
     file_list: Vec<String>,
 }
 
@@ -385,6 +401,7 @@ impl ObservationBuffer {
             freqbin_noise_flag: Vec::new(),
             freqbin_noise_power10: Vec::new(),
             dopbin_iq: Vec::new(),
+            freqbins_x: Vec::new(),
             file_list: Vec::new(),
         }
     }
@@ -397,5 +414,6 @@ impl ObservationBuffer {
         self.freqbin_gain_flag.truncate(freq_len);
         self.freqbin_noise_flag.truncate(freq_len);
         self.freqbin_noise_power10.truncate(freq_len);
+        self.freqbins_x.truncate(freq_len);
     }
 }
