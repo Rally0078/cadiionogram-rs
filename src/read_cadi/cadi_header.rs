@@ -5,6 +5,9 @@ use pyo3::IntoPyObjectExt;
 use pyo3::prelude::*;
 use serde::Serialize;
 
+///
+/// Contains the CADI header data from a given `mdX(X=1,2,3,4)` file.
+///
 #[pyclass(from_py_object)]
 #[derive(Debug, Clone, Serialize)]
 pub struct CADIheader {
@@ -172,6 +175,59 @@ impl CADIheader {
             ("incompletedata", self.incomplete_data.into_py_any(py)?),
             ("incompleteheader", self.incomplete_header.into_py_any(py)?),
         ])
+    }
+
+    #[new]
+    pub fn new(
+        site: String,
+        datetime: PyTzDateTime,
+        source: String,
+        filetype: String,
+        ndops: u8,
+        nfreqs: u16,
+        nheights: u32,
+        minheight: u16,
+        maxheight: u16,
+        dheight: f32,
+        pps: u8,
+        npulses_avgd: u8,
+        dtime: u16,
+        base_thr100: u16,
+        noise_thr100: u16,
+        min_dop_forsave: u8,
+        gain_control: String,
+        sig_process: String,
+        spares: Vec<u8>,
+        extension: String,
+        noofreceivers: u8,
+        incomplete_data: bool,
+        incomplete_header: bool,
+    ) -> Self {
+        Self {
+            site,
+            datetime,
+            source,
+            filetype,
+            ndops,
+            nfreqs,
+            nheights,
+            minheight,
+            maxheight,
+            dheight,
+            pps,
+            npulses_avgd,
+            dtime,
+            base_thr100,
+            noise_thr100,
+            min_dop_forsave,
+            gain_control,
+            sig_process,
+            spares,
+            extension,
+            noofreceivers,
+            incomplete_data,
+            incomplete_header,
+        }
     }
 }
 

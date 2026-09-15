@@ -4,6 +4,23 @@ use pyo3::prelude::*;
 use serde::Serialize;
 use std::collections::BTreeMap;
 
+/// Contains the CADI frequency bin data from a given `mdX(X=1,2,3,4)` file.
+///
+/// timepartitions : `dict`
+///     The timestamps and the cumulative length of each timestamp's observation data is given in `timepartitions`.
+///
+/// frequency : `numpy.ndarray`
+///     Frequencies in Hz from all the observations in the file.
+///
+/// frebins_gain_flag : `numpy.ndarray`
+///     Contains the gain flag values of all the observations.
+///
+/// frebins_noise_flag : `numpy.ndarray`
+///     Contains the noise flag values of all the observations.
+///
+/// frebins_noise_power10 : `numpy.ndarray`
+///     Contains the scaled noise power10 values of all the observations.
+///
 #[pyclass(from_py_object)]
 #[derive(Debug, Clone, Serialize)]
 pub struct CADIfreqbin {
@@ -57,5 +74,22 @@ impl CADIfreqbin {
         ];
         let list = pyo3::types::PyList::new(py, items)?;
         list.call_method0("__iter__")
+    }
+
+    #[new]
+    pub fn new(
+        timepartitions: BTreeMap<String, usize>,
+        frequency: Vec<f32>,
+        frebins_gain_flag: Vec<u8>,
+        frebins_noise_flag: Vec<u8>,
+        frebins_noise_power10: Vec<u16>,
+    ) -> Self {
+        Self {
+            timepartitions,
+            frequency,
+            frebins_gain_flag,
+            frebins_noise_flag,
+            frebins_noise_power10,
+        }
     }
 }

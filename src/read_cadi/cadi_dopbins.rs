@@ -4,6 +4,25 @@ use pyo3::prelude::*;
 use serde::Serialize;
 use std::collections::BTreeMap;
 
+///
+///  Contains the CADI doppler bin data from a given `mdX(X=1,2,3,4)` file.
+///
+///  timepartitions : `dict`
+///      The timestamps and the cumulative length of each timestamp's observation data is given in `timepartitions`.
+///  
+///  height : `numpy.ndarray`
+///      Heights in km from all the observations in the file.
+///
+///  frequency : `numpy.ndarray`
+///      Frequencies in Hz from all the observations in the file.
+///
+///  dop_shifts : `numpy.ndarray`
+///      Contains the scaled doppler shift values of all the observations.
+///
+///  complex_signal : `numpy.ndarray`
+///      Contains the complex signal value from each receiver.
+///
+
 #[pyclass(from_py_object)]
 #[derive(Debug, Clone, Serialize)]
 pub struct CADIdopbin {
@@ -72,5 +91,26 @@ impl CADIdopbin {
         ];
         let list = pyo3::types::PyList::new(py, items)?;
         list.call_method0("__iter__")
+    }
+
+    #[new]
+    pub fn new(
+        timepartitions: BTreeMap<String, usize>,
+        nreceivers: u8,
+        height: Vec<f32>,
+        frequency: Vec<f32>,
+        freqs: Vec<f32>,
+        dop_shifts: Vec<f32>,
+        signals: Vec<i16>,
+    ) -> Self {
+        Self {
+            timepartitions,
+            nreceivers,
+            height,
+            frequency,
+            freqs,
+            dop_shifts,
+            signals,
+        }
     }
 }
