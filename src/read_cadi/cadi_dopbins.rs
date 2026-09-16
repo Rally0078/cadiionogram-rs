@@ -23,7 +23,7 @@ use std::collections::BTreeMap;
 ///      Contains the complex signal value from each receiver.
 ///
 
-#[pyclass(from_py_object)]
+#[pyclass(dict, from_py_object)]
 #[derive(Debug, Clone, Serialize)]
 pub struct CADIdopbin {
     #[pyo3(get, set, name = "timepartitions")]

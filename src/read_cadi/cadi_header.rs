@@ -8,7 +8,7 @@ use serde::Serialize;
 ///
 /// Contains the CADI header data from a given `mdX(X=1,2,3,4)` file.
 ///
-#[pyclass(from_py_object)]
+#[pyclass(dict, from_py_object)]
 #[derive(Debug, Clone, Serialize)]
 pub struct CADIheader {
     #[pyo3(get, set)]

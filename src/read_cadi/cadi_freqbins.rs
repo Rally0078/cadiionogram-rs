@@ -21,7 +21,7 @@ use std::collections::BTreeMap;
 /// frebins_noise_power10 : `numpy.ndarray`
 ///     Contains the scaled noise power10 values of all the observations.
 ///
-#[pyclass(from_py_object)]
+#[pyclass(dict, from_py_object)]
 #[derive(Debug, Clone, Serialize)]
 pub struct CADIfreqbin {
     #[pyo3(get, set, name = "timepartitions")]

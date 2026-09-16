@@ -23,7 +23,7 @@ use pyo3::prelude::*;
 /// dopbins: `CADIdopbin`
 ///     An object containing the CADI doppler bin data.
 ///
-#[pyclass]
+#[pyclass(dict)]
 pub struct CADIdata {
     #[pyo3(get)]
     pub file_list: Vec<String>,
