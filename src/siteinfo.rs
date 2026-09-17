@@ -1,9 +1,9 @@
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use chrono_tz::{Asia::Kolkata, Tz, UTC};
+use directories::BaseDirs;
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::env;
 use std::fs;
 use std::path::PathBuf;
 
@@ -55,7 +55,6 @@ const DEFAULT_SITES_JSON: &str = r#"{
     }
 }"#;
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SiteInfoRaw {
     #[serde(rename = "FH")]
@@ -94,27 +93,19 @@ impl From<SiteInfoRaw> for SiteInfo {
     }
 }
 
-
 pub fn get_sites_json_path() -> PathBuf {
-    #[cfg(target_os = "windows")]
-    {
-        let is_frozen = env::var("CARGO_MANIFEST_DIR").is_err();
-        if is_frozen {
-            let exe = env::current_exe().expect("Cannot determine executable path");
-            exe.parent()
-                .expect("Executable has no parent directory")
-                .join("sites.json")
-        } else {
-            PathBuf::from("./sites.json")
-        }
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let home = env::var_os("HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("."));
-        home.join(".config").join("egrliono").join("sites.json")
-    }
+    let path = if cfg!(target_os = "windows") {
+        // C:\Users\<User>\AppData\Local\cadilib\sites.json
+        BaseDirs::new()
+            .map(|dirs| dirs.data_local_dir().join("cadilib").join("sites.json"))
+            .unwrap_or_else(|| PathBuf::from("sites.json"))
+    } else {
+        // ~/.config/cadilib/sites.json (Linux / macOS)
+        BaseDirs::new()
+            .map(|dirs| dirs.config_dir().join("cadilib").join("sites.json"))
+            .unwrap_or_else(|| PathBuf::from("sites.json"))
+    };
+    path
 }
 
 type SiteMap = HashMap<String, SiteInfo>;
@@ -130,12 +121,10 @@ pub fn load_sites_file() -> &'static SiteMap {
                 fs::create_dir_all(parent)
                     .expect("Failed to create config directory for sites.json");
             }
-            fs::write(&path, DEFAULT_SITES_JSON)
-                .expect("Failed to write default sites.json");
+            fs::write(&path, DEFAULT_SITES_JSON).expect("Failed to write default sites.json");
         }
 
-        let contents =
-            fs::read_to_string(&path).expect("Failed to read sites.json");
+        let contents = fs::read_to_string(&path).expect("Failed to read sites.json");
         let raw_map: HashMap<String, SiteInfoRaw> =
             serde_json::from_str(&contents).expect("Failed to parse sites.json");
 
@@ -145,7 +134,6 @@ pub fn load_sites_file() -> &'static SiteMap {
             .collect()
     })
 }
-
 
 impl SiteInfo {
     pub fn from_file(site_name: &str) -> Result<SiteInfo, String> {
